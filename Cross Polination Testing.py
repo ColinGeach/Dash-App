@@ -19,7 +19,7 @@ import base64
 warnings.filterwarnings("ignore", message="Workbook contains no default style")
 
 # ---- Configuration ----
-
+EXCEL_PATH = r'C:\Users\ColinGeach\Documents\all orders.xlsx'
 
 excluded_target_companies = [
     "MOTION INDUSTRIES",
@@ -56,18 +56,21 @@ IR_WHITE  = "#FFFFFF"
 BOOTSTRAP = dbc.themes.FLATLY
 
 # ---- Load & Clean Data ----
-GLOBAL_DF = None
-
-def clean_uploaded_df(df):
-    # (Paste your cleaning logic here)
+try:
+    df = pd.read_excel(EXCEL_PATH)
     df['ShipTo_Company'] = df['ShipTo_Company'].astype(str).str.upper().str.strip()
     df['Territory']      = df['Name_Territory_aet'].astype(str).str.upper().str.strip()
     df['Principal']      = df['Name_Principal_aet'].astype(str).str.upper().str.strip()
     df['Net_Sales']      = pd.to_numeric(df['Amount_Net_cn'], errors='coerce').fillna(0)
+
     date_col = next(c for c in df.columns if 'date' in c.lower())
     df['Order_Date'] = pd.to_datetime(df[date_col], errors='coerce')
     df['Quarter']    = df['Order_Date'].dt.to_period('Q')
+
+    # Filter out rows with NaT in 'Order_Date' before finding the most recent quarter
     df = df.dropna(subset=['Order_Date']).copy()
+
+    # Exclude the most recent quarter's data
     if not df.empty:
         most_recent_quarter = df['Quarter'].max()
         df = df[df['Quarter'] != most_recent_quarter].copy()
@@ -79,8 +82,6 @@ def clean_uploaded_df(df):
     # Determine min and max dates for the DatePickerRange
     min_date_allowed = df['Order_Date'].min().date() if not df.empty else date(2000, 1, 1)
     max_date_allowed = df['Order_Date'].max().date() if not df.empty else date.today()
-
-    return df
 
 except FileNotFoundError:
     print(f"Error: Excel file not found at {EXCEL_PATH}. Please ensure the path is correct.")
@@ -359,24 +360,6 @@ app.layout = dbc.Container(
 
         # Sticky Header: Navbar + Global Filters
         html.Div([
-            dcc.Upload(
-    id='upload-data',
-    children=html.Div(['Drag and Drop or ', html.A('Select an Excel File')]),
-    style={
-        'width': '100%',
-        'height': '60px',
-        'lineHeight': '60px',
-        'borderWidth': '2px',
-        'borderStyle': 'dashed',
-        'borderRadius': '5px',
-        'textAlign': 'center',
-        'margin': '10px 0',
-        'backgroundColor': '#FAFAFA'
-    },
-    multiple=False
-),
-html.Div(id='output-data-upload', className="text-center text-muted mt-2"),
-
             # Navbar
             dbc.Navbar(
                 dbc.Container([
@@ -1505,32 +1488,4 @@ def export_top_targets_by_territory_excel(n_clicks, selected_principal, start_da
         "base64": True
     }
 
-@app.callback(
-    Output('output-data-upload', 'children'),
-    Input('upload-data', 'contents'),
-    State('upload-data', 'filename'),
-    prevent_initial_call=True
-)
-def handle_upload(contents, filename):
-    global GLOBAL_DF
-    if contents is None:
-        return html.Div("No file uploaded", style={'color': 'red'})
-    content_type, content_string = contents.split(',')
-    decoded = base64.b64decode(content_string)
-    try:
-        if 'xls' in filename.lower():
-            df = pd.read_excel(io.BytesIO(decoded))
-        else:
-            return html.Div(f"Unsupported file format: '{filename}'", style={'color': 'red'})
-        df = clean_uploaded_df(df)
-        if df.empty:
-            return html.Div("No valid data after cleaning.", style={'color': 'orange'})
-        GLOBAL_DF = df
-        return html.Div(f"Successfully uploaded and processed '{filename}'", style={'color': 'green'})
-    except Exception as e:
-        return html.Div(f"Error processing file: {e}", style={'color': 'red'})
-
-
-
-# ---- Run the app ----
 
